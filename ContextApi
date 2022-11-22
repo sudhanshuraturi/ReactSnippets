@@ -1,0 +1,42 @@
+import { createContext, useState } from "react";
+import Counter from "./Counter";
+
+export const context = createContext({
+  count: 0,
+  increaseA: () => null,
+  decreaseA: () => null
+});
+
+export default function App() {
+  const [count, setCount] = useState(0);
+  const increaseA = () => {
+    setCount((prev) => prev + 1);
+  };
+  const decreaseA = () => {
+    setCount((prev) => prev - 1);
+  };
+
+  return (
+    <context.Provider value={{ count: count, add: increaseA, sub: decreaseA }}>
+      <Counter />
+    </context.Provider>
+  );
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+import { useContext } from "react";
+import { context } from "./App";
+const Counter = () => {
+  const ctx = useContext(context);
+  return (
+    <>
+      {" "}
+      {ctx.count}
+      <button onClick={() => ctx.add()}>+</button>{" "}
+      <button onClick={() => ctx.sub()}>-</button>{" "}
+    </>
+  );
+};
+export default Counter;
+
