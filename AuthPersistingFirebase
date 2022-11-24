@@ -1,0 +1,244 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+auth-context.js-=----->
+
+let logoutTimer;
+
+const AuthContext = React.createContext({
+  token: "",
+  isLoggedIn: false,
+  login: (token) => {},
+  logout: () => {},
+});
+
+const calculateRemainingTime = (expirationTime) => {
+    const currentTime = new Date().getTime();
+    const adjExpirationTime = new Date(expirationTime).getTime();
+    const remainingDuration = adjExpirationTime - currentTime;
+    return remainingDuration;
+};
+
+const retrieveStoredToken = () => {
+    const storedToken = localStorage.getItem('token');
+    const storedExpirationDate = localStorage.getItem('expirationTime');
+  
+    const remainingTime = calculateRemainingTime(storedExpirationDate);
+  
+    if (remainingTime <= 60000) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('expirationTime');
+      return null;
+    } 
+  
+    return {
+      token: storedToken,
+      duration: remainingTime,
+    };
+};
+
+export const AuthContextProvider = (props) => {
+  const tokenData = retrieveStoredToken();
+  let initialToken;
+  if(tokenData){
+    initialToken = tokenData.token; 
+  }
+  const [token, setToken] = useState(initialToken);
+  const userIsLoggedIn = !!token; // transforms truthy and falsy values to boolean values
+  
+  const loginHandler = (token, expirationTime) =>{
+    setToken(token);
+    localStorage.setItem('token', token);
+    localStorage.setItem('expirationTime', expirationTime);
+    const remainingTime = calculateRemainingTime(expirationTime)
+    logoutTimer = setTimeout(logoutHandler, remainingTime);
+  } 
+  
+  const logoutHandler = useCallback(() => {
+    setToken(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('expirationTime');
+    if(logoutTimer){
+        clearTimeout(logoutTimer);
+    }
+  }, []);
+  
+  useEffect(()=>{
+    if(tokenData){
+        logoutTimer = setTimeout(logoutHandler, tokenData.duration);
+    }
+  }, [tokenData, logoutHandler])
+
+  const contextValue = {
+    token: token,
+    isLoggedIn: userIsLoggedIn,
+    login: loginHandler,
+    logout: logoutHandler,
+  };
+  
+  return (
+    <AuthContext.Provider value={contextValue}>
+      {props.children}
+    </AuthContext.Provider>
+  );
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+AUTHFORM.JS
+
+import { useRef, useState, useContext } from "react";
+import classes from "./AuthForm.module.css";
+import AuthContext from "../../store/auth-context";
+import { useHistory } from "react-router-dom";
+
+const AuthForm = () => {
+  const emailInputRef = useRef();
+  const passwordInputRef = useRef();
+  const history = useHistory();
+  const authCtx = useContext(AuthContext);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLogin, setIsLogin] = useState(false);
+
+  const switchAuthModeHandler = () => {
+    setIsLogin((prevState) => !prevState);
+  };
+
+  const submitHandler = (event) => {
+    let url;
+    event.preventDefault();
+    const enteredEmail = emailInputRef.current.value;
+    const enteredPassword = passwordInputRef.current.value;
+
+    setIsLoading(true);
+    if (isLogin) {
+      url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=[FireBaseSignInApiKey]`;
+    } else {
+      url = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=[FirebaseSignupApiKey]`;
+    }
+
+    fetch(url, {
+      method: "POST",
+      body: JSON.stringify({
+        email: enteredEmail,
+        password: enteredPassword,
+        returnSecureToken: true,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+      .then((res) => {
+        setIsLoading(false);
+        if (res.ok) {
+          return res.json();
+        } else {
+          return res.json().then((data) => {
+            let errorMssg = "Authentication Failed !";
+            if (data && data.error && data.error.message) {
+              errorMssg = data.error.message;
+            }
+            throw new Error(errorMssg);
+          });
+        }
+      })
+      .then((data) => {
+        const expirationTime = new Date(
+          new Date().getTime() + +data.expiresIn * 1000 
+        );
+        // seconds to miliseconds (*1000)
+        authCtx.login(data.idToken, expirationTime.toISOString());
+        history.replace("/");
+      })
+      .catch((err) => {
+        alert(err);
+      });
+  };
+
+  return (
+    <section className={classes.auth}>
+      <h1>{isLogin ? "Login" : "Sign Up"}</h1>
+      <form onSubmit={submitHandler}>
+        <div className={classes.control}>
+          <label htmlFor="email">Your Email</label>
+          <input type="email" id="email" required ref={emailInputRef} />
+        </div>
+        <div className={classes.control}>
+          <label htmlFor="password">Your Password</label>
+          <input
+            type="password"
+            id="password"
+            required
+            ref={passwordInputRef}
+          />
+        </div>
+        <div className={classes.actions}>
+          {!isLoading && (
+            <button>{isLogin ? "Login" : "Create Account"}</button>
+          )}
+          <button
+            type="button"
+            className={classes.toggle}
+            onClick={switchAuthModeHandler}
+          >
+            {isLogin ? "Create new account" : "Login with existing account"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+};
+
+export default AuthForm;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+import classes from "./ProfileForm.module.css";
+import { useContext, useRef } from "react";
+import AuthContext from "../../store/auth-context";
+import { useHistory } from "react-router-dom";
+
+const ProfileForm = () => {
+  const history = useHistory();
+  const authCtx = useContext(AuthContext);
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:update?key=[ChangePasswordApiKey]`;
+  const newPasswordInputRef = useRef();
+  const submitHandler = (event) => {
+    event.preventDefault();
+    const enteredNewPassword = newPasswordInputRef.current.value;
+    // add validation
+    fetch(url, {
+      method: "POST",
+      body: JSON.stringify({
+        idToken: authCtx.token,
+        password: enteredNewPassword,
+        returnSecureToken: false,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }).then((res) => {
+      history.replace("/");
+    });
+  };
+
+  return (
+    <form className={classes.form} onSubmit={submitHandler}>
+      <div className={classes.control}>
+        <label htmlFor="new-password">New Password</label>
+        <input
+          type="password"
+          id="new-password"
+          minLength="7"
+          ref={newPasswordInputRef}
+        />
+      </div>
+      <div className={classes.action}>
+        <button>Change Password</button>
+      </div>
+    </form>
+  );
+};
+
+export default ProfileForm;
+
