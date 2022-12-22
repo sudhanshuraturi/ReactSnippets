@@ -40,3 +40,66 @@ const Counter = () => {
 };
 export default Counter;
 
+//////////////////////////////////////////
+//////////////////////////////////////////
+//////////////////////////////////////////
+//////////////////////////////////////////
+
+Or we can create a context provider component:---
+
+INDEX.JS
+
+import { ContextProvider } from "./ContextProvider";
+root.render(
+    <ContextProvider>
+      <App />
+    </ContextProvider>
+);
+
+////////////////////////////////////////////////////////////
+
+ContextProvider.js
+
+import { createContext, useState } from "react";
+
+const context = createContext({
+  count: 0,
+  increaseA: () => null,
+  decreaseA: () => null
+});
+
+export const ContextProvider = (props) => {
+  const [count, setCount] = useState(0);
+  const increaseA = () => {
+    setCount((prev) => prev + 1);
+  };
+  const decreaseA = () => {
+    setCount((prev) => prev - 1);
+  };
+
+  return (
+    <context.Provider value={{ count: count, add: increaseA, sub: decreaseA }}>
+      {props.children}
+    </context.Provider>
+  );
+};
+
+export default context;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+APP.JS
+
+import { useContext } from "react";
+import context from "./ContextProvider";
+
+export default function App() {
+  const ctx = useContext(context);
+  return (
+    <div className="App">
+      <h2>{ctx.count}</h2>
+      <button onClick={ctx.add}>+</button>
+      <button onClick={ctx.sub}>-</button>
+    </div>
+  );
+}
